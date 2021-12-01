@@ -29,6 +29,9 @@ tokens :-
   -- Syntax  [ THIS IS THE ONLY SEGMENT YOU NEED TO CHANGE ]
 
   let                           { \p _ -> LET    p }
+  throw                         { \p _ -> THROW  p }
+  try                           { \p _ -> TRY    p }
+  catch                         { \p _ -> CATCH  p }
   if                            { \p _ -> IF     p }
   then                          { \p _ -> THEN   p }
   else                          { \p _ -> ELSE   p }
@@ -89,6 +92,9 @@ data Token
   | COLON  AlexPosn
   | COMMA  AlexPosn
   | EOF    AlexPosn
+  | THROW  AlexPosn
+  | TRY    AlexPosn
+  | CATCH  AlexPosn
   deriving (Eq,Show)
 
 

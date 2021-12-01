@@ -28,6 +28,9 @@ import Control.Exception
 -- Token Names
 %token
     let   { LET _    }
+    throw { THROW _  }
+    try   { TRY _    }
+    catch { CATCH _  }
     true  { TRUE _   }
     false { FALSE _  }
     in    { IN _     }
@@ -87,7 +90,10 @@ Expr : Expr ':' Expr                { EBin Cons  $1 $3 }
      | Expr '+'  Expr               { EBin Plus  $1 $3 }
      | Expr '-'  Expr               { EBin Minus $1 $3 }
      | Expr '*'  Expr               { EBin Mul   $1 $3 }
+     | Expr '*'  Expr               { EBin Mul   $1 $3 }
+     | throw Expr                   { EThr  $2         }
      | if Expr then Expr else Expr  { EIf  $2 $4 $6    }
+     | try Expr catch ID Expr       { ETry  $2 $4 $5   }
      | '\\' ID '->' Expr            { ELam $2 $4       }
      | let ID '='  Expr in Expr     { ELet $2 $4 $6    }
      | let ID Ids '=' Expr in Expr  { ELet $2 (mkLam $3 $5) $7 }

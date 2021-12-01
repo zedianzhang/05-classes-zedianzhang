@@ -1,5 +1,5 @@
 module Language.Nano.Eval
-  ( defsFile 
+  ( defsFile
   , execFile, execString, execEnvString, execExpr
   , eval, lookupId, prelude
   , parse
@@ -25,7 +25,7 @@ execFile f = (safeRead f >>= execString) `catch` exitError
 safeRead :: FilePath -> IO String
 safeRead f = do
   b <- doesFileExist f
-  if b then readFile f 
+  if b then readFile f
        else throw (Error ("unknown file: " ++ f))
 
 --------------------------------------------------------------------------------
@@ -184,25 +184,56 @@ exitError (Error msg) = return (VErr msg)
 --------------------------------------------------------------------------------
 eval :: Env -> Expr -> Value
 --------------------------------------------------------------------------------
-eval env e = case evalE env e of 
+eval env e = case evalE env e of
   Left exn  -> exn
   Right val -> val
 
 --------------------------------------------------------------------------------
 evalE :: Env -> Expr -> Either Value Value
 --------------------------------------------------------------------------------
-evalE env (EInt i)       = error "TBD"
-evalE env (EBool b)      = error "TBD" 
-evalE env (EVar x)       = error "TBD"
-evalE env (EBin o e1 e2) = error "TBD" 
-evalE env (EIf c t e)    = error "TBD" 
-evalE env (ELet x e1 e2) = error "TBD" 
-evalE env (EApp e1 e2)   = error "TBD" 
-evalE env (ELam x e)     = error "TBD" 
-evalE env ENil           = error "TBD" 
+evalE env (EInt i)       = Right (VInt i)
+evalE env (EBool b)      = Right (VBool b)
+evalE env (EVar x) =
+  Right
+    (case lookupId x env of
+        v@(VClos clEnv y e) -> VClos (extend x v clEnv) y e
+        v -> v)
+evalE env (EBin o e1 e2) =do
+                          v1 <- evalE env e1
+                          v2 <- evalE env e2
+                          return (evalOp o v1 v2)
+evalE env (EIf c t e) = case eval env c of
+  VBool True -> evalE env t
+  VBool False -> evalE env e
+  _ -> Left (VErr "type error: if")
 
-evalE env (EThr e)       = error "TBD" 
-evalE env (ETry e1 x e2) = error "TBD" 
+evalE env (ELet x e1 e2) = evalE env1 e2
+  where
+    Right v1 = evalE env e1
+    env1 = extend x v1 env
+evalE env (EApp e1 e2)   = evalApp (eval env e1) (eval env e2)
+evalE env (ELam x e)     = Right (VClos env x e)
+evalE env ENil           = Right VNil
+
+
+
+evalE env (EThr e) = do
+                     v <- evalE env e
+                     Left  v
+
+-- ^ try e1 catch z => e2
+evalE env (ETry e1 x e2) =case evalE env e1 of
+                             Right a -> Right a
+                             Left b -> evalE (extend x b env) e2
+
+
+
+--------------------------------------------------------------------------------
+evalApp :: Value -> Value -> Either Value Value
+--------------------------------------------------------------------------------
+evalApp (VClos env x e) v = evalE (extend x v env) e
+evalApp (VPrim f) v = Right (f v)
+evalApp _ _ = Left (VErr "type error: closure")
 
 --------------------------------------------------------------------------------
 -- | Unit tests for `throw`
@@ -259,7 +290,28 @@ evalE env (ETry e1 x e2) = error "TBD"
 --------------------------------------------------------------------------------
 evalOp :: Binop -> Value -> Value -> Value
 --------------------------------------------------------------------------------
-evalOp = error "TBD:evalOp"
+evalOp Plus (VInt n) (VInt m) = VInt (n + m)
+evalOp Minus (VInt n) (VInt m) = VInt (n - m)
+evalOp Mul (VInt n) (VInt m) = VInt (n * m)
+evalOp Div (VInt n) (VInt m) = VInt (n `div` m)
+evalOp Eq (VInt a) (VInt b) = VBool (a == b)
+evalOp Eq (VBool a) (VBool b) = VBool (a == b)
+evalOp Eq VNil VNil = VBool True
+evalOp Eq (VCons x xs) (VCons y ys) =
+  let VBool r1 = evalOp Eq x y
+      VBool r2 = evalOp Eq xs ys
+   in VBool (r1 && r2)
+evalOp Eq VNil (VCons _ _) = VBool False
+evalOp Eq (VCons _ _) VNil = VBool False
+evalOp Ne v1 v2 =
+  let VBool res = evalOp Eq v1 v2
+   in VBool (not res)
+evalOp Lt (VInt n) (VInt m) = VBool (n < m)
+evalOp Le (VInt n) (VInt m) = VBool (n <= m)
+evalOp And (VBool b) (VBool c) = VBool (b && c)
+evalOp Or (VBool b) (VBool c) = VBool (b || c)
+evalOp Cons v1 v2 = VCons v1 v2
+evalOp _ _ _ = throw(Error "type error")
 
 --------------------------------------------------------------------------------
 -- | `lookupId x env` returns the most recent
@@ -278,13 +330,31 @@ evalOp = error "TBD:evalOp"
 --------------------------------------------------------------------------------
 lookupId :: Id -> Env -> Value
 --------------------------------------------------------------------------------
-lookupId = error "TBD:lookupId"
+lookupId x ((y, v) : env)
+  | x == y = v
+  | otherwise = lookupId x env
+lookupId x [] = throw (Error  ("unbound variable: " ++ x))
+
+
+--------------------------------------------------------------------------------
+extend :: Id -> Value -> Env -> Env
+--------------------------------------------------------------------------------
+extend x v env = (x, v) : env
 
 prelude :: Env
 prelude =
   [ -- HINT: you may extend this "built-in" environment
     -- with some "operators" that you find useful...
+    ("head", VPrim primHead)
+  , ("tail", VPrim primTail)
   ]
+primHead :: Value -> Value
+primHead (VCons x _) = x
+primHead _ = throw (Error"head on a non-list")
+
+primTail :: Value -> Value
+primTail (VCons _ xs) = xs
+primTail _ = throw( Error "tail on a non-list")
 
 env0 :: Env
 env0 =  [ ("z1", VInt 0)
